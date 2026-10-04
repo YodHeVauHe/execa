@@ -1,3 +1,4 @@
+import {execFileSync} from 'node:child_process';
 import {arch} from 'node:os';
 import process from 'node:process';
 import test from 'ava';
@@ -22,6 +23,29 @@ test('execaSync() throws error if ENOENT', t => {
 		execaSync('foo');
 	}, {message: ENOENT_REGEXP});
 });
+
+const canLowerOpenFileLimit = () => {
+	if (isWindows) {
+		return false;
+	}
+
+	try {
+		execFileSync('prlimit', [`--pid=${process.pid}`, '--nofile'], {stdio: 'ignore'});
+		return true;
+	} catch {
+		return false;
+	}
+};
+
+if (canLowerOpenFileLimit()) {
+	test('execa() rejects with the spawn error when stdio is unset', async t => {
+		const {stdout, stderr, exitCode} = await execa('emfile-spawn.js', {reject: false});
+		t.is(exitCode, 0, `stderr: ${stderr}`);
+		const {name, code} = JSON.parse(stdout);
+		t.is(name, 'ExecaError');
+		t.true(code === 'EMFILE' || code === 'ENFILE');
+	});
+}
 
 const testEarlyErrorShape = async (t, reject) => {
 	const subprocess = getEarlyErrorSubprocess({reject});
